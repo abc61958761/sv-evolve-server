@@ -32,7 +32,7 @@ export function createPokemon(newPokemon) {
               return knex('inventories').transacting(t).insert({
                 id: uuid(),
                 count: 0,
-                price: 0,
+                total_price: 0,
                 pokemon_id: pokemonId
               });
             })
@@ -54,9 +54,13 @@ export async function createPurchaseRecord(newPurchaseRecord) {
   const purchase = await new Purchase(newPurchaseRecord.purchase).save();
 
   const purchaseRecords = newPurchaseRecord.purchaseRecords.map((record) => {
+    const total_price = record.price * record.count;
+    delete record.price;
+
     const newRecord = {
       ...record,
-      purchase_id: purchase.id
+      purchase_id: purchase.id,
+      total_price
     };
 
     return new PurchaseRecord(newRecord).save();
@@ -64,17 +68,14 @@ export async function createPurchaseRecord(newPurchaseRecord) {
   const newPurchaseRecords = await Promise.all(purchaseRecords);
 
   /* eslint-disable no-await-in-loop */
-  for (const record of newPurchaseRecord.purchaseRecords) {
-    const inventory = await Inventory.where({ pokemon_id: record.pokemon_id }).fetch({ require: true });
-    const newCount = parseInt(record.count) + parseInt(inventory.attributes.count);
-    const newPrice = Math.floor(
-      (parseInt(record.price) * parseInt(record.count) +
-        parseInt(inventory.attributes.count) * parseInt(inventory.attributes.price)) /
-        newCount
-    );
+  for (const record of newPurchaseRecords) {
+    console.log(record.attributes.total_price);
+    const inventory = await Inventory.where({ pokemon_id: record.attributes.pokemon_id }).fetch({ require: true });
+    const newCount = parseInt(record.attributes.count) + parseInt(inventory.attributes.count);
+    const newTotalPrice = parseInt(record.attributes.total_price) + parseInt(inventory.attributes.total_price);
     const newInventoryParams = {
       count: newCount,
-      price: newPrice,
+      total_price: newTotalPrice,
       updated_at: new Date()
     };
 
@@ -97,9 +98,13 @@ export async function createSoldRecord(newSoldRecord) {
   const sold = await new Sold(newSoldRecord.sold).save();
 
   const soldRecordPromise = newSoldRecord.soldRecords.map((record) => {
+    const total_price = record.price * record.count;
+    delete record.price;
+
     const newRecord = {
       ...record,
-      sold_id: sold.id
+      sold_id: sold.id,
+      total_price
     };
 
     return new SoldRecord(newRecord).save();
@@ -107,16 +112,14 @@ export async function createSoldRecord(newSoldRecord) {
   const newSoldRecords = await Promise.all(soldRecordPromise);
 
   /* eslint-disable no-await-in-loop */
-  for (const record of newSoldRecord.soldRecords) {
-    const inventory = await Inventory.where({ pokemon_id: record.pokemon_id }).fetch({ require: true });
-    const newCount = parseInt(inventory.attributes.count) - parseInt(record.count);
-    const newPrice =
-      Math.floor((inventory.attributes.count * inventory.attributes.price - record.count * record.price) / newCount) ||
-      0;
+  for (const record of newSoldRecords) {
+    const inventory = await Inventory.where({ pokemon_id: record.attributes.pokemon_id }).fetch({ require: true });
+    const newCount = parseInt(inventory.attributes.count) - parseInt(record.attributes.count);
+    const newTotalPrice = parseInt(inventory.attributes.total_price) - parseInt(record.attributes.total_price);
 
     const newInventoryParams = {
       count: newCount,
-      price: newPrice,
+      total_price: newTotalPrice,
       updated_at: new Date()
     };
 
@@ -145,7 +148,7 @@ export async function queryPurchaseRecords() {
       'purchases.date',
       'purchase_records.purchase_id',
       'purchase_records.count',
-      'purchase_records.price',
+      'purchase_records.total_price',
       'purchase_records.pokemon_id',
       knex.ref('pokemons.name').as('pokemon_name')
     ])
@@ -166,7 +169,7 @@ export async function queryPurchaseRecords() {
           splice: item.splice,
           purchaser: item.purchaser,
           date: item.date,
-          price: 0
+          total_price: 0
         },
         purchase_records: []
       };
@@ -175,14 +178,14 @@ export async function queryPurchaseRecords() {
       record: {
         id: item.purchase_record_id,
         count: item.count,
-        price: item.price
+        total_price: item.total_price
       },
       pokemon: {
         id: item.pokemon_id,
         name: item.pokemon_name
       }
     });
-    tempData[item.purchase_id].purchase.price += item.price * item.count;
+    tempData[item.purchase_id].purchase.total_price += item.total_price;
   }
 
   return Object.values(tempData).map((item) => item);
@@ -213,7 +216,7 @@ export async function querySoldRecords() {
       'solds.sales_channel',
       'sold_records.sold_id',
       'sold_records.count',
-      'sold_records.price',
+      'sold_records.total_price',
       'sold_records.pokemon_id',
       knex.ref('pokemons.name').as('pokemon_name')
     ])
@@ -233,7 +236,7 @@ export async function querySoldRecords() {
           name: item.sold_name,
           splice: item.splice,
           date: item.date,
-          price: 0,
+          total_price: 0,
           payee: item.payee,
           salesChannel: item.sales_channel
         },
@@ -244,14 +247,14 @@ export async function querySoldRecords() {
       record: {
         id: item.purchase_record_id,
         count: item.count,
-        price: item.price
+        total_price: item.total_price
       },
       pokemon: {
         id: item.pokemon_id,
         name: item.pokemon_name
       }
     });
-    tempData[item.sold_id].sold.price += item.price * item.count;
+    tempData[item.sold_id].sold.total_price += item.total_price;
   }
 
   return Object.values(tempData).map((item) => item);
@@ -302,7 +305,7 @@ export async function deletePurchaseRecords({ ids }) {
             return knex('purchase_records')
               .transacting(t)
               .where({ purchase_id: purchase.id })
-              .update({ status: 'inactive' }, ['id', 'pokemon_id', 'count', 'price'])
+              .update({ status: 'inactive' }, ['id', 'pokemon_id', 'count', 'total_price'])
               .then((purchaseRecords) => {
                 const inventoryPrmoise = purchaseRecords.map(async (purchaseRecord) => {
                   const inventory = await knex('inventories')
@@ -311,15 +314,11 @@ export async function deletePurchaseRecords({ ids }) {
                     .first();
 
                   const newCount = inventory.count - purchaseRecord.count;
-                  const newPrice =
-                    Math.floor(
-                      (inventory.price * inventory.count - purchaseRecord.price * purchaseRecord.count) / newCount
-                    ) || 0;
-
+                  const newTotalPrice = inventory.total_price - purchaseRecord.total_price;
                   return knex('inventories')
                     .transacting(t)
                     .where({ pokemon_id: purchaseRecord.pokemon_id })
-                    .update({ price: newPrice, count: newCount });
+                    .update({ total_price: newTotalPrice, count: newCount });
                 });
 
                 return Promise.all(inventoryPrmoise).then((inventories) => inventories);
@@ -358,7 +357,7 @@ export async function deleteSoldRecords({ ids }) {
             return knex('sold_records')
               .transacting(t)
               .where({ sold_id: sold.id })
-              .update({ status: 'inactive' }, ['id', 'pokemon_id', 'count', 'price'])
+              .update({ status: 'inactive' }, ['id', 'pokemon_id', 'count', 'total_price'])
               .then((soldRecords) => {
                 const inventoryPrmoise = soldRecords.map(async (soldRecord) => {
                   const inventory = await knex('inventories')
@@ -366,14 +365,12 @@ export async function deleteSoldRecords({ ids }) {
                     .where({ pokemon_id: soldRecord.pokemon_id })
                     .first();
                   const newCount = inventory.count + soldRecord.count;
-                  const newPrice = Math.floor(
-                    (inventory.price * inventory.count + soldRecord.price * soldRecord.count) / newCount
-                  );
+                  const newTotalPrice = inventory.total_price + soldRecord.total_price;
 
                   return knex('inventories')
                     .transacting(t)
                     .where({ pokemon_id: soldRecord.pokemon_id })
-                    .update({ price: newPrice, count: newCount });
+                    .update({ total_price: newTotalPrice, count: newCount });
                 });
 
                 return Promise.all(inventoryPrmoise).then((inventories) => inventories);

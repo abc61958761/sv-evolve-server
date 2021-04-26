@@ -10,7 +10,7 @@ export function up(knex) {
     table.timestamp('created_at').notNull().defaultTo(knex.raw('now()'));
     table.timestamp('updated_at').notNull().defaultTo(knex.raw('now()'));
     table.integer('count').notNull().defaultTo(0);
-    table.integer('price').notNull().defaultTo(0);
+    table.integer('total_price').notNull().defaultTo(0);
     table.uuid('pokemon_id').references('id').inTable('pokemons').index();
   });
 }
