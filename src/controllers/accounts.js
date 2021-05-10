@@ -141,3 +141,76 @@ export function deleteSoldRecords(req, res, next) {
     .then((data) => res.status(HttpStatus.CREATED).json({ data }))
     .catch((err) => next(err));
 }
+
+export function updateSettlementRecords(req, res, next) {
+  accountService
+    .updateSettlementRecords(req.body)
+    .then((data) => res.status(HttpStatus.CREATED).json({ data }))
+    .catch((err) => next(err));
+}
+
+export function queryRecordTotalByUnsettlement(req, res, next) {
+  accountService
+    .queryRecordTotalByUnsettlement(req.body)
+    .then((data) => res.status(HttpStatus.CREATED).json({ data }))
+    .catch((err) => next(err));
+}
+
+export function querySettlements(req, res, next) {
+  accountService
+    .querySettlements()
+    .then((data) => res.status(HttpStatus.CREATED).json({ data }))
+    .catch((err) => next(err));
+}
+
+export async function getSettlementDetail(req, res, next) {
+  let result = {
+    unsplitSolds: [],
+    unsplitPurchases: [],
+    detail: []
+  };
+
+  switch (req.query.status) {
+    case 'unsettlement':
+      result.detail = await accountService.getUnsettlementDetail(req.query);
+      break;
+    case 'settlemented':
+      result.detail = await accountService.getSettlementDetail(req.query);
+      break;
+    default:
+      break;
+  }
+
+  result.unsplitSolds = await accountService.getUnsplitSoldsByDate(req.query);
+  result.unsplitPurchases = await accountService.getUnsplitPurchasesByDate(req.query);
+
+  return res.status(HttpStatus.CREATED).json(result);
+}
+
+export async function updateSoldRecordsByDate(req, res, next) {
+  accountService
+    .updateSoldRecordsByDate(req.body)
+    .then((data) => res.status(HttpStatus.CREATED).json({ data }))
+    .catch((err) => next(err));
+}
+
+export async function updateSoldRecordsById(req, res, next) {
+  accountService
+    .updateSoldRecordsById(req.params.id, req.body)
+    .then((data) => res.status(HttpStatus.CREATED).json({ data }))
+    .catch((err) => next(err));
+}
+
+export async function updatePurchaseRecordsByDate(req, res, next) {
+  accountService
+    .updatePurchaseRecordsByDate(req.body)
+    .then((data) => res.status(HttpStatus.CREATED).json({ data }))
+    .catch((err) => next(err));
+}
+
+export async function updatePurchaseRecordsById(req, res, next) {
+  accountService
+    .updatePurchaseRecordsById(req.params.id, req.body)
+    .then((data) => res.status(HttpStatus.CREATED).json({ data }))
+    .catch((err) => next(err));
+}

@@ -14,6 +14,9 @@ export function up(knex) {
     table.uuid('sold_id').references('id').inTable('solds').index();
     table.uuid('pokemon_id').references('id').inTable('pokemons').index();
     table.enum('status', ['active', 'inactive', 'archive']).notNull().defaultTo('active');
+    table.boolean('settlement').notNull().defaultTo(false);
+    table.enum('split', [true, false]).defaultTo(false);
+    table.timestamp('date').notNull();
   });
 }
 

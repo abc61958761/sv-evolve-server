@@ -60,7 +60,8 @@ export async function createPurchaseRecord(newPurchaseRecord) {
     const newRecord = {
       ...record,
       purchase_id: purchase.id,
-      total_price
+      total_price,
+      date: newPurchaseRecord.purchase.date
     };
 
     return new PurchaseRecord(newRecord).save();
@@ -69,7 +70,6 @@ export async function createPurchaseRecord(newPurchaseRecord) {
 
   /* eslint-disable no-await-in-loop */
   for (const record of newPurchaseRecords) {
-    console.log(record.attributes.total_price);
     const inventory = await Inventory.where({ pokemon_id: record.attributes.pokemon_id }).fetch({ require: true });
     const newCount = parseInt(record.attributes.count) + parseInt(inventory.attributes.count);
     const newTotalPrice = parseInt(record.attributes.total_price) + parseInt(inventory.attributes.total_price);
@@ -104,7 +104,8 @@ export async function createSoldRecord(newSoldRecord) {
     const newRecord = {
       ...record,
       sold_id: sold.id,
-      total_price
+      total_price,
+      date: newSoldRecord.sold.date
     };
 
     return new SoldRecord(newRecord).save();
@@ -143,7 +144,6 @@ export async function queryPurchaseRecords() {
       knex.ref('purchase_records.id').as('purchase_record_id'),
       knex.ref('purchases.name').as('purchase_name'),
       knex.ref('purchases.status').as('purchase_status'),
-      'purchases.splice',
       'purchases.purchaser',
       'purchases.date',
       'purchase_records.purchase_id',
@@ -166,7 +166,6 @@ export async function queryPurchaseRecords() {
         purchase: {
           id: item.purchase_id,
           name: item.purchase_name,
-          splice: item.splice,
           purchaser: item.purchaser,
           date: item.date,
           total_price: 0
@@ -210,7 +209,6 @@ export async function querySoldRecords() {
     .select([
       knex.ref('sold_records.id').as('sold_record_id'),
       knex.ref('solds.name').as('sold_name'),
-      'solds.splice',
       'solds.date',
       'solds.payee',
       'solds.sales_channel',
@@ -234,7 +232,6 @@ export async function querySoldRecords() {
         sold: {
           id: item.sold_id,
           name: item.sold_name,
-          splice: item.splice,
           date: item.date,
           total_price: 0,
           payee: item.payee,
@@ -290,24 +287,49 @@ export function updatePokemon(id, params) {
 /**
  * DeletePurchaseRecords.
  *
- * @param {*} param0
+ * @param {*} param
  * @returns
  */
 export async function deletePurchaseRecords({ ids }) {
+  const dateTemp = {};
   const data = await knex.transaction(function (t) {
     const purchasePrmoises = ids.map((id) => {
       return knex('purchases')
         .transacting(t)
         .where({ id })
-        .update({ status: 'inactive' }, ['id'])
-        .then(function (purchases) {
+        .update({ status: 'inactive' }, ['id', 'date', 'settlement', 'purchaser'])
+        .then(async function (purchases) {
           const recordPromises = purchases.map((purchase) => {
+            let date = null;
+            if (purchase.settlement) {
+              if (purchase.date.getMonth() + 1 < 10) {
+                date = `${purchase.date.getFullYear()}-0${purchase.date.getMonth() + 1}`;
+              } else {
+                date = `${purchase.date.getFullYear()}-${purchase.date.getMonth() + 1}-01`;
+              }
+
+              if (!dateTemp[date]) {
+                dateTemp[date] = {
+                  chad_purchase_price: 0,
+                  carol_purchase_price: 0
+                };
+              }
+            }
+
             return knex('purchase_records')
               .transacting(t)
               .where({ purchase_id: purchase.id })
               .update({ status: 'inactive' }, ['id', 'pokemon_id', 'count', 'total_price'])
               .then((purchaseRecords) => {
                 const inventoryPrmoise = purchaseRecords.map(async (purchaseRecord) => {
+                  if (purchase.settlement) {
+                    if (purchase.purchaser === 'Chad') {
+                      dateTemp[date].chad_purchase_price += purchaseRecord.total_price;
+                    } else {
+                      dateTemp[date].carol_purchase_price += purchaseRecord.total_price;
+                    }
+                  }
+
                   const inventory = await knex('inventories')
                     .transacting(t)
                     .where({ pokemon_id: purchaseRecord.pokemon_id })
@@ -324,17 +346,32 @@ export async function deletePurchaseRecords({ ids }) {
                 return Promise.all(inventoryPrmoise).then((inventories) => inventories);
               });
           });
-
-          return Promise.all(recordPromises).then((records) => {
-            return { records };
-          });
+          const record = await Promise.all(recordPromises);
+          return {
+            purchases,
+            record
+          };
         });
     });
 
     return Promise.all(purchasePrmoises).then((purchase) => {
-      return { purchase };
+      return purchase;
     });
   });
+
+  const settlementPromises = Object.keys(dateTemp).map(async (item) => {
+    const month = new Date(item).getMonth() + 1;
+    const year = new Date(item).getFullYear();
+
+    const settlement = await knex('settlements').where({ month, year }).first();
+    const updateParams = {
+      chad_purchase_price: settlement.chad_purchase_price - dateTemp[item].chad_purchase_price,
+      carol_purchase_price: settlement.carol_purchase_price - dateTemp[item].carol_purchase_price
+    };
+
+    return knex('settlements').where({ id: settlement.id }).update(updateParams);
+  });
+  await Promise.all(settlementPromises);
 
   return data;
 }
@@ -346,20 +383,45 @@ export async function deletePurchaseRecords({ ids }) {
  * @returns
  */
 export async function deleteSoldRecords({ ids }) {
+  const dateTemp = {};
   const data = await knex.transaction(function (t) {
     const soldPrmoises = ids.map((id) => {
       return knex('solds')
         .transacting(t)
         .where({ id })
-        .update({ status: 'inactive' }, ['id'])
-        .then(function (solds) {
+        .update({ status: 'inactive' }, ['id', 'date', 'settlement', 'payee'])
+        .then(async function (solds) {
           const recordPromises = solds.map((sold) => {
+            let date = null;
+            if (sold.settlement) {
+              if (sold.date.getMonth() + 1 < 10) {
+                date = `${sold.date.getFullYear()}-0${sold.date.getMonth() + 1}`;
+              } else {
+                date = `${sold.date.getFullYear()}-${sold.date.getMonth() + 1}-01`;
+              }
+
+              if (!dateTemp[date]) {
+                dateTemp[date] = {
+                  chad_sold_price: 0,
+                  carol_sold_price: 0
+                };
+              }
+            }
+
             return knex('sold_records')
               .transacting(t)
               .where({ sold_id: sold.id })
               .update({ status: 'inactive' }, ['id', 'pokemon_id', 'count', 'total_price'])
               .then((soldRecords) => {
                 const inventoryPrmoise = soldRecords.map(async (soldRecord) => {
+                  if (sold.payee) {
+                    if (sold.purchaser === 'Chad') {
+                      dateTemp[date].chad_sold_price += soldRecord.total_price;
+                    } else {
+                      dateTemp[date].carol_sold_price += soldRecord.total_price;
+                    }
+                  }
+
                   const inventory = await knex('inventories')
                     .transacting(t)
                     .where({ pokemon_id: soldRecord.pokemon_id })
@@ -377,16 +439,406 @@ export async function deleteSoldRecords({ ids }) {
               });
           });
 
-          return Promise.all(recordPromises).then((records) => {
-            return { records };
-          });
+          const record = await Promise.all(recordPromises);
+          return {
+            solds,
+            record
+          };
         });
     });
 
     return Promise.all(soldPrmoises).then((sold) => {
-      return { sold };
+      return sold;
     });
   });
 
+  const settlementPromises = Object.keys(dateTemp).map(async (item) => {
+    const month = new Date(item).getMonth() + 1;
+    const year = new Date(item).getFullYear();
+
+    const settlement = await knex('settlements').where({ month, year }).first();
+    const updateParams = {
+      chad_sold_price: settlement.chad_sold_price - dateTemp[item].chad_sold_price,
+      carol_sold_price: settlement.carol_sold_price - dateTemp[item].carol_sold_price
+    };
+
+    return knex('settlements').where({ id: settlement.id }).update(updateParams);
+  });
+  await Promise.all(settlementPromises);
+
   return data;
+}
+
+export async function updateSettlementRecords({ params }) {
+  const transactionPromises = params.map((param) => {
+    return knex.transaction(async function (t) {
+      let chad_purchase_price = 0,
+        chad_sold_price = 0,
+        carol_purchase_price = 0,
+        carol_sold_price = 0;
+
+      await knex('purchases')
+        .transacting(t)
+        .andWhereRaw(`EXTRACT(YEAR FROM date::date) = ?`, [param.year])
+        .andWhereRaw(`EXTRACT(MONTH FROM date::date) = ?`, [param.month])
+        .where({ status: 'active', purchaser: 'Chad' })
+        .update({ settlement: true }, ['id'])
+        .then((purchases) => {
+          const purchaseRecordPromises = purchases.map((purchase) => {
+            return knex('purchase_records')
+              .where({ purchase_id: purchase.id })
+              .update({ settlement: true }, ['id', 'total_price']);
+          });
+          return Promise.all(purchaseRecordPromises).then((purchaseRecords) => {
+            for (const purchaseRecord of purchaseRecords) {
+              for (const record of purchaseRecord) {
+                chad_purchase_price += record.total_price;
+              }
+            }
+
+            return purchaseRecords;
+          });
+        });
+
+      await knex('solds')
+        .transacting(t)
+        .andWhereRaw(`EXTRACT(YEAR FROM date::date) = ?`, [param.year])
+        .andWhereRaw(`EXTRACT(MONTH FROM date::date) = ?`, [param.month])
+        .where({ status: 'active', payee: 'Chad' })
+        .update({ settlement: true }, ['id'])
+        .then((solds) => {
+          const soldRecordPromises = solds.map((sold) => {
+            return knex('sold_records').where({ sold_id: sold.id }).update({ settlement: true }, ['id', 'total_price']);
+          });
+          return Promise.all(soldRecordPromises).then((soldRecords) => {
+            for (const soldRecord of soldRecords) {
+              for (const record of soldRecord) {
+                chad_sold_price += record.total_price;
+              }
+            }
+
+            return soldRecords;
+          });
+        });
+
+      await knex('purchases')
+        .transacting(t)
+        .andWhereRaw(`EXTRACT(YEAR FROM date::date) = ?`, [param.year])
+        .andWhereRaw(`EXTRACT(MONTH FROM date::date) = ?`, [param.month])
+        .where({ status: 'active', purchaser: 'Carol' })
+        .update({ settlement: true }, ['id'])
+        .then((purchases) => {
+          const purchaseRecordPromises = purchases.map((purchase) => {
+            return knex('purchase_records')
+              .where({ purchase_id: purchase.id })
+              .update({ settlement: true }, ['id', 'total_price']);
+          });
+          return Promise.all(purchaseRecordPromises).then((purchaseRecords) => {
+            for (const purchaseRecord of purchaseRecords) {
+              for (const record of purchaseRecord) {
+                carol_purchase_price += record.total_price;
+              }
+            }
+
+            return purchaseRecords;
+          });
+        });
+
+      await knex('solds')
+        .transacting(t)
+        .andWhereRaw(`EXTRACT(YEAR FROM date::date) = ?`, [param.year])
+        .andWhereRaw(`EXTRACT(MONTH FROM date::date) = ?`, [param.month])
+        .where({ status: 'active', payee: 'Carol' })
+        .update({ settlement: true }, ['id'])
+        .then((solds) => {
+          const soldRecordPromises = solds.map((sold) => {
+            return knex('sold_records').where({ sold_id: sold.id }).update({ settlement: true }, ['id', 'total_price']);
+          });
+          return Promise.all(soldRecordPromises).then((soldRecords) => {
+            for (const soldRecord of soldRecords) {
+              for (const record of soldRecord) {
+                carol_sold_price += record.total_price;
+              }
+            }
+
+            return soldRecords;
+          });
+        });
+
+      let settlementData = null;
+      const querySettlement = await knex('settlements').where({ month: param.month, year: param.year }).first();
+
+      if (!querySettlement) {
+        settlementData = await knex('settlements').insert({
+          id: uuid(),
+          month: param.month,
+          year: param.year,
+          chad_purchase_price,
+          chad_sold_price,
+          carol_purchase_price,
+          carol_sold_price
+        });
+      } else {
+        settlementData = await knex('settlements').where({ id: querySettlement.id }).update({
+          chad_purchase_price,
+          chad_sold_price,
+          carol_purchase_price,
+          carol_sold_price
+        });
+      }
+
+      return settlementData;
+    });
+  });
+
+  const data = await Promise.all(transactionPromises);
+
+  return data;
+}
+
+export async function queryRecordTotalByUnsettlement() {
+  const purchaseRecords = await knex('purchase_records')
+    .where({ settlement: false, status: 'active' })
+    .orderBy('date', 'desc');
+
+  const result = {};
+  for (const record of purchaseRecords) {
+    const month = record.date.getUTCMonth() + 1;
+    const year = record.date.getUTCFullYear();
+    const key = `${month}`;
+    if (!result[key]) {
+      result[key] = {
+        year,
+        month,
+        purchase: 0,
+        sold: 0
+      };
+    }
+    result[key].purchase += record.total_price;
+  }
+
+  const soldRecords = await knex('sold_records').where({ settlement: false }).orderBy('date', 'desc');
+
+  for (const record of soldRecords) {
+    const month = record.date.getUTCMonth() + 1;
+    const year = record.date.getUTCFullYear();
+    const key = `${month}`;
+    if (!result[key]) {
+      result[key] = {
+        year,
+        month,
+        purchase: 0,
+        sold: 0
+      };
+    }
+    result[key].sold += record.total_price;
+  }
+
+  return result;
+}
+
+export async function querySettlements() {
+  const settlements = await knex('settlements').orderBy('year', 'desc').orderBy('month', 'desc');
+  return settlements;
+}
+
+export async function getUnsettlementDetail({ year, month }) {
+  let chad_purchase_price = 0,
+    chad_sold_price = 0,
+    carol_purchase_price = 0,
+    carol_sold_price = 0;
+  await knex('purchases')
+    .andWhereRaw(`EXTRACT(YEAR FROM date::date) = ?`, [year])
+    .andWhereRaw(`EXTRACT(MONTH FROM date::date) = ?`, [month])
+    .where({ status: 'active', purchaser: 'Chad' })
+    .then((purchases) => {
+      const purchaseRecordPromises = purchases.map((purchase) => {
+        return knex('purchase_records').where({ purchase_id: purchase.id });
+      });
+      return Promise.all(purchaseRecordPromises).then((purchaseRecords) => {
+        for (const purchaseRecord of purchaseRecords) {
+          for (const record of purchaseRecord) {
+            chad_purchase_price += record.total_price;
+          }
+        }
+
+        return purchaseRecords;
+      });
+    });
+
+  await knex('solds')
+    .andWhereRaw(`EXTRACT(YEAR FROM date::date) = ?`, [year])
+    .andWhereRaw(`EXTRACT(MONTH FROM date::date) = ?`, [month])
+    .where({ status: 'active', payee: 'Chad' })
+    .then((solds) => {
+      const soldRecordPromises = solds.map((sold) => {
+        return knex('sold_records').where({ sold_id: sold.id });
+      });
+      return Promise.all(soldRecordPromises).then((soldRecords) => {
+        for (const soldRecord of soldRecords) {
+          for (const record of soldRecord) {
+            chad_sold_price += record.total_price;
+          }
+        }
+
+        return soldRecords;
+      });
+    });
+
+  await knex('purchases')
+    .andWhereRaw(`EXTRACT(YEAR FROM date::date) = ?`, [year])
+    .andWhereRaw(`EXTRACT(MONTH FROM date::date) = ?`, [month])
+    .where({ status: 'active', purchaser: 'Carol' })
+    .then((purchases) => {
+      const purchaseRecordPromises = purchases.map((purchase) => {
+        return knex('purchase_records').where({ purchase_id: purchase.id });
+      });
+      return Promise.all(purchaseRecordPromises).then((purchaseRecords) => {
+        for (const purchaseRecord of purchaseRecords) {
+          for (const record of purchaseRecord) {
+            carol_purchase_price += record.total_price;
+          }
+        }
+
+        return purchaseRecords;
+      });
+    });
+
+  await knex('solds')
+    .andWhereRaw(`EXTRACT(YEAR FROM date::date) = ?`, [year])
+    .andWhereRaw(`EXTRACT(MONTH FROM date::date) = ?`, [month])
+    .where({ status: 'active', payee: 'Carol' })
+    .update({ settlement: true }, ['id'])
+    .then((solds) => {
+      const soldRecordPromises = solds.map((sold) => {
+        return knex('sold_records').where({ sold_id: sold.id }).update({ settlement: true }, ['id', 'total_price']);
+      });
+      return Promise.all(soldRecordPromises).then((soldRecords) => {
+        for (const soldRecord of soldRecords) {
+          for (const record of soldRecord) {
+            carol_sold_price += record.total_price;
+          }
+        }
+
+        return soldRecords;
+      });
+    });
+
+  return {
+    year,
+    month,
+    chad_purchase_price,
+    chad_sold_price,
+    carol_purchase_price,
+    carol_sold_price
+  };
+}
+export async function getSettlementDetail({ year, month }) {
+  const settlement = knex('settlements').where({ year, month }).first();
+
+  return settlement;
+}
+
+export async function updatePurchaseRecordsById(id, params) {
+  const purchase = await knex('purchases')
+    .where({ id })
+    .first()
+    .update(params, ['id'])
+    .then((item) => {
+      return knex('purchase_records').where({ purchase_id: item[0].id }).update(params, ['id']);
+    });
+
+  return purchase;
+}
+
+export async function updatePurchaseRecordsByDate(params) {
+  const purchases = await knex('purchases')
+    .andWhereRaw(`EXTRACT(YEAR FROM date::date) = ?`, [params.date.year])
+    .andWhereRaw(`EXTRACT(MONTH FROM date::date) = ?`, [params.date.month])
+    .update({ split: params.split }, ['id'])
+    .then((items) => {
+      const purchaseRecordPromises = items.map((purchase) => {
+        return knex('purchase_records').where({ purchase_id: purchase.id }).update({ split: params.split }, ['id']);
+      });
+
+      return Promise.all(purchaseRecordPromises);
+    });
+
+  return purchases;
+}
+
+export async function updateSoldRecordsById(id, params) {
+  const sold = await knex('solds')
+    .where({ id })
+    .first()
+    .update(params, ['id'])
+    .then((item) => {
+      return knex('sold_records').where({ sold_id: item.id }).update(params, ['id']);
+    });
+
+  return sold;
+}
+
+export async function updateSoldRecordsByDate(params) {
+  const solds = await knex('solds')
+    .andWhereRaw(`EXTRACT(YEAR FROM date::date) = ?`, [params.date.year])
+    .andWhereRaw(`EXTRACT(MONTH FROM date::date) = ?`, [params.date.month])
+    .update({ split: params.split }, ['id'])
+    .then((items) => {
+      const soldRecordPromises = items.map((sold) => {
+        return knex('sold_records').where({ sold_id: sold.id }).update({ split: params.split }, ['id']);
+      });
+
+      return Promise.all(soldRecordPromises);
+    });
+
+  return solds;
+}
+
+export async function getUnsplitPurchasesByDate(date) {
+  const purchases = await knex('purchases')
+    .andWhereRaw(`EXTRACT(YEAR FROM date::date) = ?`, [date.year])
+    .andWhereRaw(`EXTRACT(MONTH FROM date::date) = ?`, [date.month])
+    .where({ split: false, status: 'active' })
+    .then((items) => {
+      const result = items.map(async (purchase) => {
+        const records = await knex('purchase_records').where({ purchase_id: purchase.id, split: false });
+        let total_price = 0;
+        for (const record of records) {
+          total_price = record.total_price;
+        }
+        return {
+          ...purchase,
+          total_price
+        };
+      });
+
+      return Promise.all(result);
+    });
+
+  return purchases;
+}
+
+export async function getUnsplitSoldsByDate(date) {
+  const solds = await knex('solds')
+    .andWhereRaw(`EXTRACT(YEAR FROM date::date) = ?`, [date.year])
+    .andWhereRaw(`EXTRACT(MONTH FROM date::date) = ?`, [date.month])
+    .where({ split: false, status: 'active' })
+    .then((items) => {
+      const result = items.map(async (sold) => {
+        const records = await knex('sold_records').where({ sold_id: sold.id, split: false });
+        let total_price = 0;
+        for (const record of records) {
+          total_price = record.total_price;
+        }
+        return {
+          ...sold,
+          total_price
+        };
+      });
+
+      return Promise.all(result);
+    });
+
+  return solds;
 }
