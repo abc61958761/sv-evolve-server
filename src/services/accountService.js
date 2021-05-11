@@ -95,42 +95,53 @@ export async function createPurchaseRecord(newPurchaseRecord) {
  * @returns
  */
 export async function createSoldRecord(newSoldRecord) {
-  const sold = await new Sold(newSoldRecord.sold).save();
+  const data = await knex.transaction(async function (t) {
+    const createdSold = await knex('solds')
+      .transacting(t)
+      .insert({ ...newSoldRecord.sold, id: uuid() })
+      .returning(['id'])
+      .then(async (sold) => {
+        const soldRecords = newSoldRecord.soldRecords.map((record) => {
+          const total_price = record.price * record.count;
+          delete record.price;
 
-  const soldRecordPromise = newSoldRecord.soldRecords.map((record) => {
-    const total_price = record.price * record.count;
-    delete record.price;
+          return {
+            ...record,
+            sold_id: sold[0].id,
+            total_price,
+            date: newSoldRecord.sold.date,
+            id: uuid()
+          };
+        });
 
-    const newRecord = {
-      ...record,
-      sold_id: sold.id,
-      total_price,
-      date: newSoldRecord.sold.date
-    };
+        const createRecords = await knex('sold_records').transacting(t).insert(soldRecords).returning(['id', 'pokemon_id', 'count', 'total_price']);
+        return {
+          sold,
+          records: createRecords
+        };
+      });
 
-    return new SoldRecord(newRecord).save();
+      /* eslint-disable no-await-in-loop */
+    for (const record of createdSold.records) {
+      const inventory = await knex('inventories').where({ pokemon_id: record.pokemon_id }).first();
+      const newCount = parseInt(inventory.count) - parseInt(record.count);
+      if (newCount < 0) throw Boom.badRequest('Error Counts');
+      const newTotalPrice = parseInt(inventory.total_price) - parseInt(record.total_price);
+
+      const newInventoryParams = {
+        id: uuid(),
+        count: newCount,
+        total_price: newTotalPrice,
+        updated_at: new Date()
+      };
+
+      await knex('inventories').transacting(t).where({ id: inventory.id }).update(newInventoryParams);
+    }
+
+    return createdSold;
   });
-  const newSoldRecords = await Promise.all(soldRecordPromise);
 
-  /* eslint-disable no-await-in-loop */
-  for (const record of newSoldRecords) {
-    const inventory = await Inventory.where({ pokemon_id: record.attributes.pokemon_id }).fetch({ require: true });
-    const newCount = parseInt(inventory.attributes.count) - parseInt(record.attributes.count);
-    const newTotalPrice = parseInt(inventory.attributes.total_price) - parseInt(record.attributes.total_price);
-
-    const newInventoryParams = {
-      count: newCount,
-      total_price: newTotalPrice,
-      updated_at: new Date()
-    };
-
-    await new Inventory({ id: inventory.id }).save(newInventoryParams);
-  }
-
-  return {
-    sold,
-    soldRecords: newSoldRecords
-  };
+  return data;
 }
 
 /**
