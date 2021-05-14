@@ -157,6 +157,7 @@ export async function queryPurchaseRecords() {
       knex.ref('purchases.status').as('purchase_status'),
       'purchases.purchaser',
       'purchases.date',
+      'purchases.split',
       'purchase_records.purchase_id',
       'purchase_records.count',
       'purchase_records.total_price',
@@ -179,7 +180,8 @@ export async function queryPurchaseRecords() {
           name: item.purchase_name,
           purchaser: item.purchaser,
           date: item.date,
-          total_price: 0
+          total_price: 0,
+          split: item.split
         },
         purchase_records: []
       };
@@ -222,6 +224,7 @@ export async function querySoldRecords() {
       knex.ref('solds.name').as('sold_name'),
       'solds.date',
       'solds.payee',
+      'solds.split',
       'solds.sales_channel',
       'sold_records.sold_id',
       'sold_records.count',
@@ -246,7 +249,8 @@ export async function querySoldRecords() {
           date: item.date,
           total_price: 0,
           payee: item.payee,
-          salesChannel: item.sales_channel
+          salesChannel: item.sales_channel,
+          split: item.split
         },
         sold_records: []
       };
@@ -425,8 +429,9 @@ export async function deleteSoldRecords({ ids }) {
               .update({ status: 'inactive' }, ['id', 'pokemon_id', 'count', 'total_price'])
               .then((soldRecords) => {
                 const inventoryPrmoise = soldRecords.map(async (soldRecord) => {
-                  if (sold.payee) {
-                    if (sold.purchaser === 'Chad') {
+                  if (sold.settlement) {
+                    if (sold.payee === 'Chad') {
+                      
                       dateTemp[date].chad_sold_price += soldRecord.total_price;
                     } else {
                       dateTemp[date].carol_sold_price += soldRecord.total_price;
@@ -628,7 +633,7 @@ export async function queryRecordTotalByUnsettlement() {
     result[key].purchase += record.total_price;
   }
 
-  const soldRecords = await knex('sold_records').where({ settlement: false }).orderBy('date', 'desc');
+  const soldRecords = await knex('sold_records').where({ settlement: false, status: 'active' }).orderBy('date', 'desc');
 
   for (const record of soldRecords) {
     const month = record.date.getUTCMonth() + 1;
