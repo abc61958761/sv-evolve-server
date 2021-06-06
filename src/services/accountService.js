@@ -55,12 +55,15 @@ export async function createPurchaseRecord(newPurchaseRecord) {
 
   const purchaseRecords = newPurchaseRecord.purchaseRecords.map((record) => {
     const total_price = record.price * record.count;
+    const pokemon_id = record.pokemon.id;
     delete record.price;
+    delete record.pokemon;
 
     const newRecord = {
       ...record,
       purchase_id: purchase.id,
       total_price,
+      pokemon_id,
       date: newPurchaseRecord.purchase.date
     };
 
@@ -105,11 +108,15 @@ export async function createSoldRecord(newSoldRecord) {
           const total_price = record.price * record.count;
           delete record.price;
 
+          const pokemon_id = record.pokemon.id;
+          delete record.pokemon;
+
           return {
             ...record,
             sold_id: sold[0].id,
             total_price,
             date: newSoldRecord.sold.date,
+            pokemon_id,
             id: uuid()
           };
         });
@@ -211,8 +218,27 @@ export async function queryPurchaseRecords() {
  *
  * @returns
  */
-export function queryInventories() {
-  return new Inventory().fetchAll({ withRelated: ['pokemon'] }).then((inventories) => inventories);
+export async function queryInventories(params) {
+  if (params.name) {
+    let query = knex('pokemons');
+    query = query.where('name', 'like', `%${params.name}%`);
+    const pokemons = await query.select();
+
+    const inventoryPromises = pokemons.map(async (pokemon) => {
+      return await knex('inventories')
+        .where({ pokemon_id: pokemon.id })
+        .then((inventories) => {
+          return {
+            ...inventories,
+            pokemon
+          };
+        });
+    });
+
+    return await Promise.all(inventoryPromises);
+  } else {
+    return new Inventory().fetchAll({ withRelated: ['pokemon'] }).then((inventories) => inventories);
+  }
 }
 
 /**

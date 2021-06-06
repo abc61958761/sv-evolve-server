@@ -16,6 +16,7 @@ export function up(knex) {
     table.enum('payee', ['Carol', 'Chad']).defaultTo('Carol');
     table.enum('status', ['active', 'inactive', 'archive']).notNull().defaultTo('active');
     table.boolean('settlement').notNull().defaultTo(false);
+    table.integer('charge').defaultTo(0);
   });
 }
 

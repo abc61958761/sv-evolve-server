@@ -10,6 +10,7 @@ router.post('/purchaseRecord', accountController.createPurchaseRecord);
 router.patch('/purchaseRecords/splits', accountController.updatePurchaseRecordsByDate);
 router.patch('/purchaseRecords/splits/:id', accountController.updatePurchaseRecordsById);
 router.post('/pokemon', accountController.createPokemon);
+router.post('/pokemons', accountController.createPokemons);
 router.post('/pokemon/:id', accountController.updatePokemon);
 router.get('/pokemons', accountController.queryPokemons);
 router.get('/inventories', accountController.queryInventories);

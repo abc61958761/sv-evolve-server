@@ -45,6 +45,21 @@ export function createPokemon(req, res, next) {
 }
 
 /**
+ * CreatePokemons.
+ *
+ * @param {*} req
+ */
+export async function createPokemons(req, res, next) {
+  const pokemons = req.body;
+  for (const pokemon of pokemons) {
+    accountService
+      .createPokemon(pokemon)
+      .then()
+      .catch((err) => next(err));
+  }
+}
+
+/**
  * QueryPokemons.
  *
  * @param {*} req
@@ -81,7 +96,7 @@ export function updatePokemon(req, res, next) {
  */
 export function queryInventories(req, res, next) {
   accountService
-    .queryInventories(req.body)
+    .queryInventories(req.query)
     .then((data) => res.status(HttpStatus.CREATED).json({ data }))
     .catch((err) => next(err));
 }
