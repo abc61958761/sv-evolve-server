@@ -229,7 +229,7 @@ export async function queryInventories(params) {
         .where({ pokemon_id: pokemon.id })
         .then((inventories) => {
           return {
-            ...inventories,
+            ...inventories[0],
             pokemon
           };
         });
