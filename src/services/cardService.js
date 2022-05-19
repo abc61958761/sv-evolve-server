@@ -1,5 +1,5 @@
 import Boom from '@hapi/boom';
-import { uuid } from 'uuidv4';
+import { v4 as uuidv4 } from 'uuid';
 
 import { knex } from '../db';
 import Pokemon from '../models/pokemon';
@@ -8,6 +8,7 @@ import PurchaseRecord from '../models/purchase_record';
 import Inventory from '../models/inventory';
 import Sold from '../models/sold';
 import SoldRecord from '../models/sold_record';
+import { _ } from 'core-js';
 
 /**
  * CreatePokemon.
@@ -155,63 +156,56 @@ export async function createSoldRecord(newSoldRecord) {
 }
 
 /**
- * QueryPurchaseRecords.
+ * QueryCards.
  *
  * @returns
  */
-export async function queryPurchaseRecords() {
-  const data = await knex('purchases')
-    .select([
-      knex.ref('purchase_records.id').as('purchase_record_id'),
-      knex.ref('purchases.name').as('purchase_name'),
-      knex.ref('purchases.status').as('purchase_status'),
-      'purchases.purchaser',
-      'purchases.date',
-      'purchases.split',
-      'purchase_records.purchase_id',
-      'purchase_records.count',
-      'purchase_records.total_price',
-      'purchase_records.pokemon_id',
-      knex.ref('pokemons.name').as('pokemon_name')
-    ])
-    .join('purchase_records', function () {
-      this.on('purchases.id', '=', 'purchase_records.purchase_id');
-      this.andOnVal('purchases.status', '=', 'active');
-    })
-    .join('pokemons', 'purchase_records.pokemon_id', '=', 'pokemons.id');
+export async function queryCards(params) {
+  let query = knex('cards')
 
-  const tempData = {};
-
-  for (const item of data) {
-    if (!tempData[item.purchase_id]) {
-      tempData[item.purchase_id] = {
-        purchase: {
-          id: item.purchase_id,
-          name: item.purchase_name,
-          purchaser: item.purchaser,
-          date: item.date,
-          total_price: 0,
-          split: item.split
-        },
-        purchase_records: []
-      };
-    }
-    tempData[item.purchase_id].purchase_records.push({
-      record: {
-        id: item.purchase_record_id,
-        count: item.count,
-        total_price: item.total_price
-      },
-      pokemon: {
-        id: item.pokemon_id,
-        name: item.pokemon_name
-      }
-    });
-    tempData[item.purchase_id].purchase.total_price += item.total_price;
+  if (params.name) {
+    query = query.where('name', 'like', `%${params.name}%`);
+  }
+  if (params.code) {
+    query = query.where('code', params.code);
   }
 
-  return Object.values(tempData).map((item) => item);
+  if (params.professions && params.professions.length > 0) {
+    const professions = params.professions.split(',')
+    query = query.whereIn('profession', professions)
+  }
+  if (params.consumptions && params.consumptions.length > 0) {
+    const consumptions = params.consumptions.split(',')
+    query = query.whereIn('consumption', consumptions)
+  }
+  if (params.limit) {
+    query = query.limit(params.limit)
+  }
+  if (params.offset) {
+    query = query.offset(params.offset)
+  }
+
+  return query.select();
 }
+
+/**
+ * CreateCard.
+ *
+ * @param {*} newCard
+ * @returns
+ */
+ export function createCard(newCard) {
+  return knex('cards').insert({
+    id: uuidv4(),
+    code: newCard.code,
+    name: newCard.name,
+    consumption: newCard.consumption,
+    profession: newCard.profession,
+    type: newCard.type,
+    level: newCard.level
+  });
+}
+
 
 /**
  * QueryInventories.

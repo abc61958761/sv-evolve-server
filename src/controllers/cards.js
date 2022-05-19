@@ -1,6 +1,7 @@
 import HttpStatus from 'http-status-codes';
+import * as xlsx from 'xlsx';
 
-import * as accountService from '../services/accountService';
+import * as cardService from '../services/cardService';
 
 /**
  * QueryPurchaseRecords.
@@ -9,11 +10,71 @@ import * as accountService from '../services/accountService';
  * @param {*} res
  * @param {*} next
  */
-export function queryPurchaseRecords(req, res, next) {
-  accountService
-    .queryPurchaseRecords()
+export function queryCards(req, res, next) {
+  cardService
+    .queryCards(req.query)
     .then((data) => res.status(HttpStatus.CREATED).json({ data }))
     .catch((err) => next(err));
+}
+
+/**
+ * CreateCard.
+ *
+ * @param {*} req
+ * @param {*} res
+ * @param {*} next
+ */
+ export function createCard(req, res, next) {
+  cardService
+    .createCard(req.body)
+    .then((data) => res.status(HttpStatus.CREATED).json({ data }))
+    .catch((err) => next(err));
+}
+
+export async function uploadFile(req, res) {
+  let file = req.files.file;
+
+  let wb= xlsx.read(file.data, {type: "buffer", sheetStubs: true});
+  const headers = {}
+
+  let temp = {
+      "code": null,
+      "consumption": null,
+      "describe": null,
+      "level": null,
+      "name": null,
+      "profession": null,
+      "type": null
+  }
+
+  for(const sheetName of wb.SheetNames) {
+    for (const [key, value] of Object.entries(wb.Sheets[sheetName])) {
+
+      var col = key.substring(0,1);
+      var row = parseInt(key.substring(1));
+      if(row == 1) {
+          headers[col] = value.v;
+          continue;
+      }
+
+      temp[headers[col]] = value.v !== "null" ? value.v : null;
+
+      if (col == "H" && temp.code) {
+        const response = await cardService.createCard(temp);
+        temp = {
+            "code": null,
+            "consumption": null,
+            "describe": null,
+            "level": null,
+            "name": null,
+            "profession": null,
+            "type": null
+        }
+      }
+    }
+  }
+
+  res.json(null);
 }
 
 /**
@@ -23,11 +84,15 @@ export function queryPurchaseRecords(req, res, next) {
  * @param {*} res
  * @param {*} next
  */
-export function createPurchaseRecord(req, res, next) {
-  accountService
-    .createPurchaseRecord(req.body)
-    .then((data) => res.status(HttpStatus.CREATED).json({ data }))
-    .catch((err) => next(err));
+export async function createCards(req, res) {
+  const cards = req.body;
+  const result = [];
+  for (const card of cards) {
+    const response = await cardService.createCard(card);
+    result.push(response);
+  }
+
+  res.json(result);
 }
 
 /**
@@ -51,12 +116,13 @@ export function createPokemon(req, res, next) {
  */
 export async function createPokemons(req, res, next) {
   const pokemons = req.body;
+  const result = [];
   for (const pokemon of pokemons) {
-    accountService
-      .createPokemon(pokemon)
-      .then()
-      .catch((err) => next(err));
+    const response = await accountService.createPokemon(pokemon);
+    result.push(response);
   }
+
+  res.json(result);
 }
 
 /**

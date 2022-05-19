@@ -1,6 +1,6 @@
 definitions:
-  Pokemon:
-    title: Pokemon
+  Card:
+    title: Card
     type: object
     properties:
       id:
@@ -57,33 +57,19 @@ definitions:
                 param:
                   type: string
 
-/accounts/pokemon:
-  post:
-    summary: Create a new Pokemon
-    description: Create an Pokemon
+/cards:
+  get:
+    summary: Get Card List
+    description: Get Card List
     produces:
       - application/json
     tags:
-      - Pokemons
-    parameters:
-      - name: PokemonParams
-        description: POST params for an Pokemon
-        in: body
-        required: true
-        schema:
-          $ref: '#/definitions/NewPokemon'
+      - Cards
     responses:
-      201:
-        description: Newly created Pokemon object
+      200:
+        description: An array of cards
         schema:
-          title: Pokemon
-          type: object
-          $ref: '#/definitions/Pokemon'
-      400:
-        description: Bad request
-        schema:
-          $ref: '#/definitions/ValidationError'
-      500:
-        description: Internal server error
-        schema:
-          $ref: '#/definitions/ServerError'
+          title: Cards
+          type: array
+          items:
+            $ref: '#/definitions/Card'

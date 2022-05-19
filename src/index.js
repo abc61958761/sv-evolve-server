@@ -11,6 +11,7 @@ import bodyParser from 'body-parser';
 import compression from 'compression';
 import * as Sentry from '@sentry/node';
 import swaggerUi from 'swagger-ui-express';
+import fileUpload from 'express-fileupload';
 
 import routes from './routes';
 import json from './middlewares/json';
@@ -44,7 +45,10 @@ app.use(morgan('tiny', { stream: logStream }));
 app.use(bodyParser.json());
 app.use(errorHandler.bodyParser);
 app.use(json);
-
+// enable files upload
+app.use(fileUpload({
+  createParentPath: true
+}));
 // API Routes
 app.use('/api', routes);
 
