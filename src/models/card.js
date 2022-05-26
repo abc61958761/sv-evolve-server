@@ -1,11 +1,11 @@
 import { bookshelf } from '../db';
 
-const TABLE_NAME = 'pokemons';
+const TABLE_NAME = 'cards';
 
 /**
- * Pokemon model.
+ * Card model.
  */
-class Pokemon extends bookshelf.Model {
+class Card extends bookshelf.Model {
   /**
    * Get table name.
    */
@@ -28,4 +28,4 @@ class Pokemon extends bookshelf.Model {
   }
 }
 
-export default Pokemon;
+export default Card;
