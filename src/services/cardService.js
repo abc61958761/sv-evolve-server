@@ -162,7 +162,7 @@ export async function createSoldRecord(newSoldRecord) {
  */
 export async function queryCards(params) {
   let query = knex('cards')
-
+  console.log(params)
   if (params.name) {
     query = query.where('name', 'like', `%${params.name}%`);
   }
@@ -177,6 +177,9 @@ export async function queryCards(params) {
   if (params.consumptions && params.consumptions.length > 0) {
     const consumptions = params.consumptions.split(',')
     query = query.whereIn('consumption', consumptions)
+  }
+  if (params.version) {
+    query = query.where('version', params.version)
   }
   if (params.limit) {
     query = query.limit(params.limit)
@@ -195,6 +198,7 @@ export async function queryCards(params) {
  * @returns
  */
  export function createCard(newCard) {
+   console.log(newCard)
   return knex('cards').insert({
     id: uuidv4(),
     code: newCard.code,
@@ -202,7 +206,9 @@ export async function queryCards(params) {
     consumption: newCard.consumption,
     profession: newCard.profession,
     type: newCard.type,
-    level: newCard.level
+    level: newCard.level,
+    version: newCard.version,
+    describe: newCard.describe
   });
 }
 

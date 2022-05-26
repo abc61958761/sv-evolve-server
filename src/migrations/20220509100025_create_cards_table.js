@@ -16,6 +16,8 @@ export function up(knex) {
     table.string('consumption').notNull();
     table.string('level').notNull();
     table.string('chinese_name');
+    table.string('version');
+    table.string('describe');
   });
 }
 
