@@ -24,59 +24,71 @@ export function queryCards(req, res, next) {
  * @param {*} res
  * @param {*} next
  */
- export function createCard(req, res, next) {
+export function createCard(req, res, next) {
   cardService
     .createCard(req.body)
     .then((data) => res.status(HttpStatus.CREATED).json({ data }))
     .catch((err) => next(err));
 }
 
+/**
+ * Upload file.
+ *
+ * @param {*} req
+ * @param {*} res
+ */
 export async function uploadFile(req, res) {
-  let file = req.files.file;
+  const file = req.files.file;
 
-  let wb= xlsx.read(file.data, {type: "buffer", sheetStubs: true});
-  const headers = {}
-  const result = []
+  const wb = xlsx.read(file.data, { type: 'buffer', sheetStubs: true });
+  const headers = {};
+  const result = [];
   let temp = {
-      "version": null,
-      "code": null,
-      "consumption": null,
-      "describe": null,
-      "level": null,
-      "name": null,
-      "profession": null,
-      "type": null
-  }
+    version: null,
+    code: null,
+    consumption: null,
+    describe: null,
+    level: null,
+    name: null,
+    profession: null,
+    type: null
+  };
 
-  for(const sheetName of wb.SheetNames) {
-    console.log(sheetName)
+  const insertData = [];
+
+  for (const sheetName of wb.SheetNames) {
     for (const [key, value] of Object.entries(wb.Sheets[sheetName])) {
+      const col = key.substring(0, 1);
+      const row = parseInt(key.substring(1));
 
-      var col = key.substring(0,1);
-      var row = parseInt(key.substring(1));
-      if(row == 1) {
-          headers[col] = value.v;
-          continue;
+      if (row === 1) {
+        headers[col] = value.v;
+        continue;
       }
 
-      temp[headers[col]] = value.v !== "null" ? value.v : null;
-      if (col == "I" && temp.code) {
-        console.log(temp)
-        const response = await cardService.createCard(temp);
-        // result.push(response)
+      temp[headers[col]] = value.v !== 'null' ? value.v : null;
+      if (col === 'I' && temp.code) {
+        insertData.push(temp);
         temp = {
-            "version": null,
-            "code": null,
-            "consumption": null,
-            "describe": null,
-            "level": null,
-            "name": null,
-            "profession": null,
-            "type": null
-        }
+          version: null,
+          code: null,
+          consumption: null,
+          describe: null,
+          level: null,
+          name: null,
+          profession: null,
+          type: null
+        };
       }
     }
   }
+
+  /* eslint-disable no-await-in-loop */
+  const promises = await insertData.map((data) => {
+    return cardService.createCard(data);
+  });
+
+  await Promise.all(promises);
 
   res.json(result);
 }
@@ -86,13 +98,14 @@ export async function uploadFile(req, res) {
  *
  * @param {*} req
  * @param {*} res
- * @param {*} next
  */
 export async function createCards(req, res) {
   const cards = req.body;
   const result = [];
+
   for (const card of cards) {
     const response = await cardService.createCard(card);
+
     result.push(response);
   }
 
