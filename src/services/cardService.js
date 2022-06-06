@@ -12,11 +12,11 @@ import { knex } from '../db';
 export function queryCards(params) {
   let query = knex('cards');
 
-  if (params.name) {
-    query = query.where('name', 'like', `%${params.name}%`);
+  if (params.chinese_name) {
+    query = query.where('chinese_name', 'like', `%${params.chinese_name}%`);
   }
   if (params.code) {
-    query = query.where('code', params.code);
+    query = query.where('code', 'like', `%${params.code}%`);
   }
 
   if (params.professions && params.professions.length > 0) {
@@ -39,7 +39,7 @@ export function queryCards(params) {
     query = query.offset(params.offset);
   }
 
-  return query.select();
+  return query.orderBy('code').select();
 }
 
 /**
@@ -60,4 +60,22 @@ export function createCard(newCard) {
     version: newCard.version,
     describe: newCard.describe
   });
+}
+
+/**
+ * Update Card.
+ *
+ * @param {*} code
+ * @param {*} params
+ * @returns
+ */
+export async function updateCard(code, params) {
+  const result = await knex('cards')
+    .where({ code })
+    .update({
+      ...params,
+      updated_at: new Date()
+    });
+
+  return result;
 }

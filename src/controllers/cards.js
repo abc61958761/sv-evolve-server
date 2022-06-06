@@ -94,7 +94,7 @@ export async function uploadFile(req, res) {
 }
 
 /**
- * CreatePurchaseRecord.
+ * CreateCards.
  *
  * @param {*} req
  * @param {*} res
@@ -110,4 +110,18 @@ export async function createCards(req, res) {
   }
 
   res.json(result);
+}
+
+/**
+ * Update Cards.
+ *
+ * @param {*} req
+ * @param {*} res
+ */
+export async function updateCard(req, res) {
+  const { code, params } = req.body;
+
+  const response = await cardService.updateCard(code, params);
+
+  res.json(response);
 }
